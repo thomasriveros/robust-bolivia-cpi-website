@@ -3,10 +3,120 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bolivia Retail CPI Tracker | Inflation Dashboard</title>
+    
+    <!-- Primary SEO Metadata -->
+    <title>Bolivia Real-Time Inflation Tracker | Daily Retail CPI Dashboard</title>
+    <meta name="description" content="Track Bolivia's real-time supermarket-based retail CPI (Consumer Price Index) estimates. Compare daily price tracker data with official government INE benchmarks." />
+    <meta name="keywords" content="Bolivia inflation, real time Bolivia inflation, Bolivia CPI, retail price index Bolivia, Bolivia supermarket inflation, IPC Bolivia, inflacion Bolivia tiempo real, Thomas Riveros, Cornell University" />
+    <meta name="author" content="Thomas Riveros" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Google Search Console Verification Placeholder -->
+    <!-- Replace the content attribute below with your GSC HTML Tag code when ready: -->
+    <!-- <meta name="google-site-verification" content="YOUR_GSC_CODE_HERE" /> -->
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://thomasriveros.github.io/robust-bolivia-cpi-website/" />
+    <meta property="og:title" content="Bolivia Real-Time Inflation Tracker | Daily Retail CPI Dashboard" />
+    <meta property="og:description" content="Track daily supermarket retail CPI estimates for Bolivia. Compare high-frequency real-time price indices with official INE government data." />
+    <meta property="og:image" content="https://thomasriveros.github.io/robust-bolivia-cpi-website/mama004.jpg" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://thomasriveros.github.io/robust-bolivia-cpi-website/" />
+    <meta property="twitter:title" content="Bolivia Real-Time Inflation Tracker | Daily Retail CPI Dashboard" />
+    <meta property="twitter:description" content="Track daily supermarket retail CPI estimates for Bolivia. Compare high-frequency real-time price indices with official INE government data." />
+    <meta property="twitter:image" content="https://thomasriveros.github.io/robust-bolivia-cpi-website/mama004.jpg" />
+
+    <!-- Structured Data (JSON-LD WebApplication Schema) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Bolivia Real-Time Inflation & Retail CPI Tracker",
+      "url": "https://thomasriveros.github.io/robust-bolivia-cpi-website/",
+      "description": "An interactive dashboard tracking real-time daily supermarket-based retail CPI estimates for Bolivia and comparing them with official government INE data.",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "All",
+      "author": {
+        "@type": "Person",
+        "name": "Thomas Riveros",
+        "email": "tmr94@cornell.edu"
+      }
+    }
+    </script>
+
+    <!-- Structured Data (JSON-LD Dataset Schema) for Google Dataset Search -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Dataset",
+      "name": "Bolivia Daily Supermarket-based CPI and Inflation Estimates",
+      "description": "High-frequency daily retail inflation data for Bolivia (National, city, and product category levels) compared side-by-side with official government INE indices.",
+      "url": "https://thomasriveros.github.io/robust-bolivia-cpi-website/",
+      "creator": {
+        "@type": "Person",
+        "name": "Thomas Riveros",
+        "email": "tmr94@cornell.edu"
+      },
+      "temporalCoverage": "2024-08-01/..",
+      "distribution": [
+        {
+          "@type": "DataDownload",
+          "encodingFormat": "application/pdf",
+          "contentUrl": "https://thomasriveros.github.io/robust-bolivia-cpi-website/Methods.pdf"
+        },
+        {
+          "@type": "DataDownload",
+          "encodingFormat": "application/pdf",
+          "contentUrl": "https://thomasriveros.github.io/robust-bolivia-cpi-website/Real-Time%20CPI%20Thomas%20Riveros.pdf"
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Semantic HTML Fallback for Web Crawlers (hidden/replaced when React loads) -->
+      <div style="padding: 40px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 850px; margin: 0 auto; line-height: 1.6; color: #333;">
+        <header style="border-bottom: 2px solid #eaeaea; padding-bottom: 20px; margin-bottom: 30px;">
+          <h1 style="font-size: 2.2rem; color: #111; margin-bottom: 10px;">Bolivia Real-Time Inflation &amp; Retail CPI Tracker</h1>
+          <p style="font-size: 1.15rem; color: #555; margin-bottom: 0;">
+            Comparing high-frequency daily supermarket-based retail Consumer Price Index (CPI) estimates against official Instituto Nacional de Estadística (INE) benchmarks.
+          </p>
+        </header>
+        
+        <main>
+          <section style="margin-bottom: 30px;">
+            <h2 style="font-size: 1.5rem; color: #222;">Dashboard Highlights</h2>
+            <ul>
+              <li><strong>National Trends:</strong> Real-time daily supermarket indicators compared against the national INE Core-5 and general CPI basket.</li>
+              <li><strong>City-Level Trackers:</strong> Custom daily index tracking and inflation calculations for major cities (La Paz, Santa Cruz, and Cochabamba).</li>
+              <li><strong>Category Breakdown:</strong> Detailed side-by-side analysis for Alimentos, Bebidas, Bienes diversos, Muebles, and Prendas de vestir.</li>
+            </ul>
+          </section>
+
+          <section style="margin-bottom: 30px;">
+            <h2 style="font-size: 1.5rem; color: #222;">Methodology &amp; Economic Research</h2>
+            <p>
+              Developed by Thomas Riveros (Cornell University), this project aims to provide daily, high-frequency visibility into price adjustments across Bolivia. Through automated supermarket scrapers and robust statistical rebasing methods, this dashboard helps bridge the gap between monthly retrospective benchmarks and real-time local price conditions.
+            </p>
+            <div style="margin-top: 20px; padding: 15px; background-color: #f7f9fa; border-radius: 6px; border-left: 4px solid #005a9c;">
+              <p style="margin: 0; font-weight: 600;">Download Academic Resources:</p>
+              <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+                <li><a href="./Methods.pdf" style="color: #005a9c; text-decoration: none; font-weight: 500;">Research Methodology Guide (PDF)</a></li>
+                <li><a href="./Real-Time%20CPI%20Thomas%20Riveros.pdf" style="color: #005a9c; text-decoration: none; font-weight: 500;">Full Econometric Paper by Thomas Riveros (PDF)</a></li>
+              </ul>
+            </div>
+          </section>
+        </main>
+        
+        <footer style="margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; font-size: 0.9rem; color: #777;">
+          <p>© 2026 Thomas Riveros. Email: <a href="mailto:tmr94@cornell.edu" style="color: #555;">tmr94@cornell.edu</a> | Scraper Repository: <a href="https://github.com/thomasriveros/robust-cpi-bolivia" style="color: #555;">github.com/thomasriveros/robust-cpi-bolivia</a></p>
+        </footer>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
