@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  background-color: #f7f9fa; /* Crisp, neutral light grey background */
+  color: #2c3e50; /* Datawrapper-style deep slate text */
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* Datawrapper-style table and layout helper utilities */
+.dw-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.dw-card {
+  background-color: #ffffff;
+  border: 1px solid #e1e6eb; /* Sharp, flat light border */
+  border-radius: 4px; /* Minimalist subtle rounded corner */
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+/* Custom minimal scrollbar for flat data grids */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f3f5;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Recharts grid overrides for print/Datawrapper feel */
+.recharts-cartesian-grid-horizontal line {
+  stroke: #e6ebf0 !important;
+  stroke-dasharray: 0 !important; /* solid thin lines */
+}
+.recharts-cartesian-grid-vertical line {
+  display: none; /* horizontal lines only */
+}
