@@ -393,7 +393,17 @@ export default function App() {
       {/* Flat Datawrapper Style Footer / Contact box */}
       <footer className="bg-white border-t border-[#e1e6eb] py-8 px-6 mt-12 text-center text-xs text-neutral-500">
         <div className="max-w-[1200px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="font-medium text-neutral-400">© {new Date().getFullYear()} Thomas Riveros.</p>
+          <div className="flex flex-col items-center sm:items-start gap-1">
+            <p className="font-medium text-neutral-400">© {new Date().getFullYear()} Thomas Riveros.</p>
+            <a
+              href="https://www.datawrapper.de/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-neutral-400 hover:text-[#1f77b4] underline underline-offset-2 transition-colors"
+            >
+              {t.designCredit}
+            </a>
+          </div>
           <div className="flex items-center gap-1.5 bg-[#f8f9fa] border border-[#e1e6eb] px-3.5 py-2 rounded-sm text-neutral-600">
             <span className="font-medium">{t.footerContact}</span>
             <a 
@@ -1624,6 +1634,9 @@ function ProductCountView({ data, lang, t }: { data: any[]; lang: Lang; t: typeo
 // --- METHODOLOGY VIEW ---
 
 function MethodologyView({ lang, t }: { lang: Lang; t: typeof T['en'] }) {
+  const methodologyPdfUrl = `${import.meta.env.BASE_URL}Methods.pdf`;
+  const researchPaperPdfUrl = `${import.meta.env.BASE_URL}Real_Time_CPI_Paper.pdf`;
+
   return (
     <div className="space-y-6">
       {/* Top Banner */}
@@ -1649,7 +1662,7 @@ function MethodologyView({ lang, t }: { lang: Lang; t: typeof T['en'] }) {
           
           <div className="flex items-center gap-2 mt-auto">
             <a 
-              href="/Methods.pdf" 
+              href={methodologyPdfUrl}
               download
               className="flex items-center gap-1.5 px-3.5 py-2.5 bg-[#2c3e50] text-white hover:bg-[#1a252f] transition-all font-bold text-[10px] uppercase rounded-sm border border-[#2c3e50] shadow-sm cursor-pointer"
             >
@@ -1657,7 +1670,7 @@ function MethodologyView({ lang, t }: { lang: Lang; t: typeof T['en'] }) {
               {t.methodology.downloadPDF}
             </a>
             <a 
-              href="/Methods.pdf" 
+              href={methodologyPdfUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white text-neutral-700 hover:bg-neutral-50 hover:text-black border border-neutral-200 rounded-sm font-bold text-[10px] uppercase shadow-sm cursor-pointer"
@@ -1680,7 +1693,7 @@ function MethodologyView({ lang, t }: { lang: Lang; t: typeof T['en'] }) {
           
           <div className="flex items-center gap-2 mt-auto">
             <a 
-              href="/Real_Time_CPI_Paper.pdf" 
+              href={researchPaperPdfUrl}
               download
               className="flex items-center gap-1.5 px-3.5 py-2.5 bg-[#2c3e50] text-white hover:bg-[#1a252f] transition-all font-bold text-[10px] uppercase rounded-sm border border-[#2c3e50] shadow-sm cursor-pointer"
             >
@@ -1688,7 +1701,7 @@ function MethodologyView({ lang, t }: { lang: Lang; t: typeof T['en'] }) {
               {t.methodology.downloadPaper}
             </a>
             <a 
-              href="/Real_Time_CPI_Paper.pdf" 
+              href={researchPaperPdfUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white text-neutral-700 hover:bg-neutral-50 hover:text-black border border-neutral-200 rounded-sm font-bold text-[10px] uppercase shadow-sm cursor-pointer"
