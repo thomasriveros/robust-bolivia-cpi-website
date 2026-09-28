@@ -20,8 +20,8 @@ export const T = {
 
     alignment: {
       label: 'Comparison Alignment:',
-      rebased: 'Index Level (Base = 100 on Aug 1, 2024)',
-      original: 'Original Level (Aligned on Aug 1, 2024)'
+      rebased: 'Index Level (Base = 100 on Aug 15, 2024)',
+      original: 'Original Level (Aligned on Aug 15, 2024)'
     },
 
     period: {
@@ -109,8 +109,8 @@ export const T = {
 
     alignment: {
       label: 'Alineación de Comparación:',
-      rebased: 'Nivel de Índice (Base = 100 en Ago 1, 2024)',
-      original: 'Nivel Original (Alineado en Ago 1, 2024)'
+      rebased: 'Nivel de Índice (Base = 100 en Ago 15, 2024)',
+      original: 'Nivel Original (Alineado en Ago 15, 2024)'
     },
 
     period: {
