@@ -114,6 +114,17 @@ function parseDateSafe(dateStr: string): { displayDate: string; time: number } {
   };
 }
 
+// INE's monthly index averages prices collected during the month, so each official
+// value is placed on the 15th of its reference month to line up with the daily tracker.
+const OFFICIAL_DAY_OF_MONTH = '15';
+const BASE_DATE = '2024-08-15';
+
+function toMidMonth(dateStr: any): any {
+  if (dateStr == null || dateStr === '') return dateStr;
+  const { displayDate } = parseDateSafe(String(dateStr));
+  return displayDate ? `${displayDate.slice(0, 8)}${OFFICIAL_DAY_OF_MONTH}` : dateStr;
+}
+
 // Locate closest value in time
 function getValueOnDate(rows: any[], targetDateStr: string, dateField: string, valField: string): number | null {
   if (!rows || rows.length === 0) return null;
@@ -253,7 +264,10 @@ export default function App() {
             dynamicTyping: true,
             skipEmptyLines: true,
             complete: (res) => {
-              results[key as keyof DataStore] = res.data;
+              const rows = res.data as any[];
+              results[key as keyof DataStore] = key.startsWith('official')
+                ? rows.map(r => ({ ...r, date: toMidMonth(r.date) }))
+                : rows;
               resolve();
             },
             error: () => {
@@ -427,10 +441,10 @@ function NationalView({ data, alignmentMode, lang, t }: { data: DataStore; align
   const [inflationMode, setInflationMode] = useState<InflationMode>('MOM');
 
   const chartData = useMemo(() => {
-    // 1. Get base values on Aug 1, 2024
-    const baseSynth = getValueOnDate(data.nationalSynthetic, '2024-08-01', 'date', 'cpi') || 100.417;
-    const baseOffCore = getValueOnDate(data.officialNationalCore5, '2024-08-01', 'date', 'Core-5 CPI') || 100.455;
-    const baseOffOverall = getValueOnDate(data.officialNationalCPI, '2024-08-01', 'date', 'CPI level') || 101.167;
+    // 1. Get base values on the rebasing anchor date
+    const baseSynth = getValueOnDate(data.nationalSynthetic, BASE_DATE, 'date', 'cpi') || 100.0;
+    const baseOffCore = getValueOnDate(data.officialNationalCore5, BASE_DATE, 'date', 'Core-5 CPI') || 100.0;
+    const baseOffOverall = getValueOnDate(data.officialNationalCPI, BASE_DATE, 'date', 'CPI level') || 100.0;
 
     const synthRows = data.nationalSynthetic || [];
     
@@ -811,7 +825,7 @@ function NationalView({ data, alignmentMode, lang, t }: { data: DataStore; align
           <li><strong>Supermarket Estimate</strong> represents a high-frequency tracker computed daily from active retail listings.</li>
           <li><strong>Official Core-5 (INE)</strong> represents the official equivalent basket derived exclusively from the 5 corresponding product categories in the official INE registry (representing roughly 49% of the national CPI basket).</li>
           <li><strong>Official Overall CPI</strong> captures economy-wide inflation including utilities, housing, transportation, healthcare, and services (100% basket weight).</li>
-          <li>Both rebased views anchor cumulative growth from <strong>August 1, 2024</strong> (the first overlapping monthly official data release).</li>
+          <li>Both rebased views anchor cumulative growth from <strong>August 15, 2024</strong>. Official monthly values are plotted on the 15th of each month, since INE's index averages prices collected across the month.</li>
         </ul>
 
         {/* Flat Datawrapper Style Weights table */}
@@ -892,10 +906,10 @@ function getCityCombinedData(
   const cityCore5Rows = (officialCityCore5Rows || []).filter(r => matchCity(r.city));
   const cityCatRows = (officialCityCategoryRows || []).filter(r => matchCity(r.city));
 
-  // 1. Get base values on August 1, 2024
-  const baseSynth = getValueOnDate(syntheticRows, '2024-08-01', 'date', 'cpi') || 100.099;
-  const baseOffCore = getValueOnDate(cityCore5Rows, '2024-08-01', 'date', 'Core-5 CPI') || 100.0;
-  const baseOffOverall = getValueOnDate(cityCatRows.filter(r => norm(r.category) === 'indice general'), '2024-08-01', 'date', 'CPI level') || 100.0;
+  // 1. Get base values on the rebasing anchor date
+  const baseSynth = getValueOnDate(syntheticRows, BASE_DATE, 'date', 'cpi') || 100.0;
+  const baseOffCore = getValueOnDate(cityCore5Rows, BASE_DATE, 'date', 'Core-5 CPI') || 100.0;
+  const baseOffOverall = getValueOnDate(cityCatRows.filter(r => norm(r.category) === 'indice general'), BASE_DATE, 'date', 'CPI level') || 100.0;
 
   // Track category baseline maps
   const categories = [
@@ -908,8 +922,8 @@ function getCityCombinedData(
 
   const catBases: Record<string, { synth: number; off: number }> = {};
   categories.forEach(cat => {
-    const sBase = getValueOnDate(syntheticRows, '2024-08-01', 'date', cat.synth) || 100.0;
-    const oBase = getValueOnDate(cityCatRows.filter(r => norm(r.category) === norm(cat.off)), '2024-08-01', 'date', 'CPI level') || 100.0;
+    const sBase = getValueOnDate(syntheticRows, BASE_DATE, 'date', cat.synth) || 100.0;
+    const oBase = getValueOnDate(cityCatRows.filter(r => norm(r.category) === norm(cat.off)), BASE_DATE, 'date', 'CPI level') || 100.0;
     catBases[cat.synth] = { synth: sBase, off: oBase };
   });
 
@@ -1473,7 +1487,7 @@ function CityView({ name, data, alignmentMode, lang, t }: { name: string; data: 
           <li><strong>Supermarket Estimate</strong> represents a high-frequency tracker computed daily from active retail listings.</li>
           <li><strong>Official Core-5 (INE)</strong> represents the official equivalent basket derived exclusively from the 5 corresponding product categories in the official INE registry (representing roughly 49% of the national CPI basket).</li>
           <li><strong>Official Overall CPI</strong> captures economy-wide inflation including utilities, housing, transportation, healthcare, and services (100% basket weight).</li>
-          <li>Both rebased views anchor cumulative growth from <strong>August 1, 2024</strong> (the first overlapping monthly official data release).</li>
+          <li>Both rebased views anchor cumulative growth from <strong>August 15, 2024</strong>. Official monthly values are plotted on the 15th of each month, since INE's index averages prices collected across the month.</li>
         </ul>
 
         {/* Flat Datawrapper Style Weights table */}
