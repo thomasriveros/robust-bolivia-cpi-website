@@ -1,4 +1,4 @@
-import { T, Lang } from './translations';
+import { T, Lang, forIndex } from './translations';
 import React, { useState, useEffect, useMemo, Fragment } from 'react';
 import Papa from 'papaparse';
 import {
@@ -14,12 +14,20 @@ const DATA_URLS = {
   santaCruzSynthetic: 'https://raw.githubusercontent.com/thomasriveros/robust-cpi-bolivia/refs/heads/main/results/supermarket_1/santa_cruz/supermarket_1_tracker_results.csv',
   cochabambaSynthetic: 'https://raw.githubusercontent.com/thomasriveros/robust-cpi-bolivia/refs/heads/main/results/supermarket_1/cochabamba/supermarket_1_tracker_results.csv',
   productCounts: 'https://raw.githubusercontent.com/thomasriveros/robust-cpi-bolivia/refs/heads/main/results/supermarket_1/supermarket_1_daily_n_counts.csv',
-  
+
+  // Core-4 index (CCIF classification), published alongside core-5
+  core4National: 'https://raw.githubusercontent.com/thomasriveros/robust-cpi-bolivia/refs/heads/main/results/core4/national/core4_tracker_results.csv',
+  core4LaPaz: 'https://raw.githubusercontent.com/thomasriveros/robust-cpi-bolivia/refs/heads/main/results/core4/la_paz/core4_tracker_results.csv',
+  core4SantaCruz: 'https://raw.githubusercontent.com/thomasriveros/robust-cpi-bolivia/refs/heads/main/results/core4/santa_cruz/core4_tracker_results.csv',
+  core4Cochabamba: 'https://raw.githubusercontent.com/thomasriveros/robust-cpi-bolivia/refs/heads/main/results/core4/cochabamba/core4_tracker_results.csv',
+  core4ProductCounts: 'https://raw.githubusercontent.com/thomasriveros/robust-cpi-bolivia/refs/heads/main/results/core4/core4_daily_n_counts.csv',
+
   // Official Comparative datasets
   officialNationalCPI: 'https://raw.githubusercontent.com/thomasriveros/live-ine-inflation-update/refs/heads/main/data/national_CPI.csv',
   officialNationalCore5: 'https://raw.githubusercontent.com/thomasriveros/live-ine-inflation-update/refs/heads/main/data/national_core_5_CPI.csv',
   officialCityCore5: 'https://raw.githubusercontent.com/thomasriveros/live-ine-inflation-update/refs/heads/main/data/city_level_core_5_CPI.csv',
-  officialCityCategory: 'https://raw.githubusercontent.com/thomasriveros/live-ine-inflation-update/refs/heads/main/data/city_level_CPI_by_category.csv'
+  officialCityCategory: 'https://raw.githubusercontent.com/thomasriveros/live-ine-inflation-update/refs/heads/main/data/city_level_CPI_by_category.csv',
+  officialNationalCategory: 'https://raw.githubusercontent.com/thomasriveros/live-ine-inflation-update/refs/heads/main/data/national_CPI_by_category.csv'
 };
 
 // Datawrapper Style Colors
@@ -41,17 +49,96 @@ const CAT_COLORS = [
   '#8b5cf6'  // Purple
 ];
 
+type LoadedData = Record<keyof typeof DATA_URLS, any[]>;
+
+export type IndexKey = 'core5' | 'core4';
+
+type BasketCategory = { synth: string; off: string; raw: number };
+
+// Supermarket category name, INE division name and INE 2016 raw weight for each basket
+const BASKET_CATEGORIES: BasketCategory[] = [
+  { synth: 'Alimentos y Bebidas No Alcohólicas', off: 'Alimentos y bebidas no alcohólicas', raw: 27.06 },
+  { synth: 'Prendas de Vestir y Calzado', off: 'Prendas de vestir y calzado', raw: 7.56 },
+  { synth: 'Bienes y Servicios Diversos', off: 'Bienes y servicios diversos', raw: 7.55 },
+  { synth: 'Muebles, Bienes y Servicios Domésticos', off: 'Muebles, bienes y servicios domésticos', raw: 6.08 },
+  { synth: 'Bebidas Alcohólicas y Tabaco', off: 'Bebidas alcohólicas y tabaco', raw: 0.88 }
+];
+
+const BASKETS: Record<IndexKey, { exportKey: string; filePrefix: string; categories: BasketCategory[] }> = {
+  core5: { exportKey: 'Core5', filePrefix: '', categories: BASKET_CATEGORIES },
+  core4: { exportKey: 'Core4', filePrefix: 'core4_', categories: BASKET_CATEGORIES.filter(c => c.synth !== 'Prendas de Vestir y Calzado') }
+};
+
+// Official core-basket rows are normalised to this field for both indices
+const CORE_FIELD = 'Core CPI';
+
+// The data the views read, for the selected index
 type DataStore = {
+  basket: typeof BASKETS[IndexKey];
   nationalSynthetic: any[];
   laPazSynthetic: any[];
   cochabambaSynthetic: any[];
   santaCruzSynthetic: any[];
   productCounts: any[];
   officialNationalCPI: any[];
-  officialNationalCore5: any[];
-  officialCityCore5: any[];
+  officialNationalCore: any[];
+  officialCityCore: any[];
   officialCityCategory: any[];
 };
+
+/**
+ * Official core-4 equivalent from INE division indices, built like the published core-5 file in
+ * live-ine-inflation-update: the weighted sum of division levels, with weights normalised over the basket.
+ */
+function officialBasketRows(categoryRows: any[], categories: BasketCategory[], byCity: boolean): any[] {
+  const total = categories.reduce((sum, c) => sum + c.raw, 0);
+  const weights = new Map(categories.map(c => [norm(c.off), c.raw / total]));
+  const groups = new Map<string, { date: string; city?: string; sum: number; count: number }>();
+  for (const r of categoryRows || []) {
+    const w = weights.get(norm(String(r.category ?? '')));
+    const level = Number(r['CPI level']);
+    if (w === undefined || !r.date || isNaN(level)) continue;
+    const key = byCity ? `${r.date}|${r.city}` : String(r.date);
+    const g = groups.get(key) ?? { date: r.date, city: byCity ? r.city : undefined, sum: 0, count: 0 };
+    g.sum += w * level;
+    g.count += 1;
+    groups.set(key, g);
+  }
+  return [...groups.values()]
+    .filter(g => g.count === categories.length)
+    .map(g => (byCity ? { date: g.date, city: g.city, [CORE_FIELD]: g.sum } : { date: g.date, [CORE_FIELD]: g.sum }));
+}
+
+function buildViewData(loaded: LoadedData, indexKey: IndexKey): DataStore {
+  const basket = BASKETS[indexKey];
+  const common = {
+    basket,
+    officialNationalCPI: loaded.officialNationalCPI,
+    officialCityCategory: loaded.officialCityCategory
+  };
+  if (indexKey === 'core4') {
+    return {
+      ...common,
+      nationalSynthetic: loaded.core4National,
+      laPazSynthetic: loaded.core4LaPaz,
+      cochabambaSynthetic: loaded.core4Cochabamba,
+      santaCruzSynthetic: loaded.core4SantaCruz,
+      productCounts: loaded.core4ProductCounts,
+      officialNationalCore: officialBasketRows(loaded.officialNationalCategory, basket.categories, false),
+      officialCityCore: officialBasketRows(loaded.officialCityCategory, basket.categories, true)
+    };
+  }
+  return {
+    ...common,
+    nationalSynthetic: loaded.nationalSynthetic,
+    laPazSynthetic: loaded.laPazSynthetic,
+    cochabambaSynthetic: loaded.cochabambaSynthetic,
+    santaCruzSynthetic: loaded.santaCruzSynthetic,
+    productCounts: loaded.productCounts,
+    officialNationalCore: (loaded.officialNationalCore5 || []).map(r => ({ date: r.date, [CORE_FIELD]: r['Core-5 CPI'] })),
+    officialCityCore: (loaded.officialCityCore5 || []).map(r => ({ date: r.date, city: r.city, [CORE_FIELD]: r['Core-5 CPI'] }))
+  };
+}
 
 export type AlignmentMode = 'rebased' | 'original';
 export type InflationMode = 'DOD' | 'MOM' | 'YOY';
@@ -244,17 +331,28 @@ const norm = (s: string) => s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '
 
 export default function App() {
   const [lang, setLang] = useState<Lang>('en');
-  const t = T[lang];
-  const [data, setData] = useState<DataStore | null>(null);
+  const [indexKey, setIndexKey] = useState<IndexKey>(() =>
+    new URLSearchParams(window.location.search).get('index') === 'core4' ? 'core4' : 'core5');
+  const t = forIndex(T[lang], indexKey, lang);
+  const [loaded, setLoaded] = useState<LoadedData | null>(null);
+  const data = useMemo(() => (loaded ? buildViewData(loaded, indexKey) : null), [loaded, indexKey]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('national');
   const [alignmentMode, setAlignmentMode] = useState<AlignmentMode>('rebased');
 
-  // Load all 9 CSV datasets concurrently
+  // Keep the selected index in the URL so links open the same view
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (indexKey === 'core4') url.searchParams.set('index', 'core4');
+    else url.searchParams.delete('index');
+    window.history.replaceState(null, '', url.toString());
+  }, [indexKey]);
+
+  // Load all CSV datasets concurrently
   useEffect(() => {
     const fetchAll = async () => {
       setLoading(true);
-      const results: Partial<DataStore> = {};
+      const results: Partial<LoadedData> = {};
       
       const promises = Object.entries(DATA_URLS).map(([key, url]) => {
         return new Promise<void>((resolve) => {
@@ -265,13 +363,13 @@ export default function App() {
             skipEmptyLines: true,
             complete: (res) => {
               const rows = res.data as any[];
-              results[key as keyof DataStore] = key.startsWith('official')
+              results[key as keyof LoadedData] = key.startsWith('official')
                 ? rows.map(r => ({ ...r, date: toMidMonth(r.date) }))
                 : rows;
               resolve();
             },
             error: () => {
-              results[key as keyof DataStore] = []; // fallback
+              results[key as keyof LoadedData] = []; // fallback
               resolve();
             }
           });
@@ -279,7 +377,7 @@ export default function App() {
       });
 
       await Promise.all(promises);
-      setData(results as DataStore);
+      setLoaded(results as LoadedData);
       setLoading(false);
     };
 
@@ -364,6 +462,26 @@ export default function App() {
             ))}
           </div>
 
+          <div className="flex flex-wrap items-center gap-4">
+          {/* Index selector (core-5 original / core-4 CCIF) */}
+          {activeTab !== 'methodology' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-neutral-500 uppercase" title={t.index.help}>{t.index.label}</span>
+              <div className="flex bg-[#f1f3f5] p-0.5 rounded border border-neutral-200" role="group" aria-label={t.index.label}>
+                {(['core5', 'core4'] as IndexKey[]).map(k => (
+                  <button
+                    key={k}
+                    onClick={() => setIndexKey(k)}
+                    aria-pressed={indexKey === k}
+                    className={`text-[10px] font-bold px-2 py-1.5 rounded-sm uppercase ${indexKey === k ? 'bg-white text-black shadow-sm border border-neutral-200' : 'text-neutral-500 hover:text-black'}`}
+                  >
+                    {t.index[k]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Alignment controls (Rebase vs level) */}
           {activeTab !== 'productCounts' && activeTab !== 'methodology' && (
             <div className="flex items-center gap-2">
@@ -384,6 +502,7 @@ export default function App() {
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* Dashboard Dashboard Rendering */}
@@ -394,12 +513,14 @@ export default function App() {
           </div>
         ) : data ? (
           <div className="space-y-6">
+            <Fragment key={indexKey}>
             {activeTab === 'national' && <NationalView data={data} alignmentMode={alignmentMode} lang={lang} t={t} />}
             {activeTab === 'laPaz' && <CityView name="La Paz" data={data} alignmentMode={alignmentMode} lang={lang} t={t} />}
             {activeTab === 'cochabamba' && <CityView name="Cochabamba" data={data} alignmentMode={alignmentMode} lang={lang} t={t} />}
             {activeTab === 'santaCruz' && <CityView name="Santa Cruz" data={data} alignmentMode={alignmentMode} lang={lang} t={t} />}
-            {activeTab === 'productCounts' && <ProductCountView data={data.productCounts} lang={lang} t={t} />}
+            {activeTab === 'productCounts' && <ProductCountView data={data.productCounts} filePrefix={data.basket.filePrefix} lang={lang} t={t} />}
             {activeTab === 'methodology' && <MethodologyView lang={lang} t={t} />}
+            </Fragment>
           </div>
         ) : null}
       </main>
@@ -443,16 +564,16 @@ function NationalView({ data, alignmentMode, lang, t }: { data: DataStore; align
   const chartData = useMemo(() => {
     // 1. Get base values on the rebasing anchor date
     const baseSynth = getValueOnDate(data.nationalSynthetic, BASE_DATE, 'date', 'cpi') || 100.0;
-    const baseOffCore = getValueOnDate(data.officialNationalCore5, BASE_DATE, 'date', 'Core-5 CPI') || 100.0;
+    const baseOffCore = getValueOnDate(data.officialNationalCore, BASE_DATE, 'date', CORE_FIELD) || 100.0;
     const baseOffOverall = getValueOnDate(data.officialNationalCPI, BASE_DATE, 'date', 'CPI level') || 100.0;
 
     const synthRows = data.nationalSynthetic || [];
     
     const offCoreMap = new Map<string, number>();
-    (data.officialNationalCore5 || []).forEach(r => {
-      if (r.date && r['Core-5 CPI'] != null) {
+    (data.officialNationalCore || []).forEach(r => {
+      if (r.date && r[CORE_FIELD] != null) {
         const dInfo = parseDateSafe(String(r.date));
-        offCoreMap.set(dInfo.displayDate, Number(r['Core-5 CPI']));
+        offCoreMap.set(dInfo.displayDate, Number(r[CORE_FIELD]));
       }
     });
 
@@ -561,13 +682,13 @@ function NationalView({ data, alignmentMode, lang, t }: { data: DataStore; align
       DataSource: r.data_source,
       Synthetic_CPI: r.Synthetic_National != null ? r.Synthetic_National.toFixed(4) : null,
       Synthetic_Inflation: r.Synthetic_National_Inflation != null ? r.Synthetic_National_Inflation.toFixed(4) : null,
-      Official_Core5_CPI: r.Official_Core5 != null ? r.Official_Core5.toFixed(4) : null,
-      Official_Core5_Inflation: r.Official_Core5_Inflation != null ? r.Official_Core5_Inflation.toFixed(4) : null,
+      [`Official_${data.basket.exportKey}_CPI`]: r.Official_Core5 != null ? r.Official_Core5.toFixed(4) : null,
+      [`Official_${data.basket.exportKey}_Inflation`]: r.Official_Core5_Inflation != null ? r.Official_Core5_Inflation.toFixed(4) : null,
       Official_Overall_CPI: r.Official_Overall != null ? r.Official_Overall.toFixed(4) : null,
       Official_Overall_Inflation: r.Official_Overall_Inflation != null ? r.Official_Overall_Inflation.toFixed(4) : null,
     }));
     const csv = Papa.unparse(exportRows);
-    exportCSV(csv, 'bolivia_national_cpi_comparison.csv');
+    exportCSV(csv, `${data.basket.filePrefix}bolivia_national_cpi_comparison.csv`);
   };
 
   return (
@@ -654,7 +775,7 @@ function NationalView({ data, alignmentMode, lang, t }: { data: DataStore; align
             </div>
             <div className="flex gap-2">
               <button 
-                onClick={() => exportImage(cpiGraphRef.current, 'bolivia_national_cpi_index.png')} 
+                onClick={() => exportImage(cpiGraphRef.current, `${data.basket.filePrefix}bolivia_national_cpi_index.png`)} 
                 className="flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-1 border border-neutral-200 hover:bg-neutral-50 rounded bg-white text-neutral-700 shadow-sm"
               >
                 <Camera className="w-3 h-3" />
@@ -818,62 +939,50 @@ function NationalView({ data, alignmentMode, lang, t }: { data: DataStore; align
         </div>
       </div>
 
-      {/* Methodology Callout Panel */}
-      <div className="bg-neutral-50 border-l-4 border-[#2c3e50] p-4 text-xs text-neutral-600 leading-relaxed rounded-r shadow-sm">
-        <p className="font-bold text-[#2c3e50] uppercase mb-1">Methodology & Dataset Definitions</p>
-        <ul className="list-disc pl-4 space-y-1 mt-1">
-          <li><strong>Supermarket Estimate</strong> represents a high-frequency tracker computed daily from active retail listings.</li>
-          <li><strong>Official Core-5 (INE)</strong> represents the official equivalent basket derived exclusively from the 5 corresponding product categories in the official INE registry (representing roughly 49% of the national CPI basket).</li>
-          <li><strong>Official Overall CPI</strong> captures economy-wide inflation including utilities, housing, transportation, healthcare, and services (100% basket weight).</li>
-          <li>Both rebased views anchor cumulative growth from <strong>August 15, 2024</strong>. Official monthly values are plotted on the 15th of each month, since INE's index averages prices collected across the month.</li>
-        </ul>
+      <DefinitionsPanel basket={data.basket} t={t} />
+    </div>
+  );
+}
 
-        {/* Flat Datawrapper Style Weights table */}
-        <div className="mt-4 border-t border-neutral-200 pt-4">
-          <p className="font-bold text-[#2c3e50] uppercase mb-2">{t.weightsTableTitle}</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[10px] text-left text-neutral-600 border-collapse">
-              <thead>
-                <tr className="border-b border-neutral-300 text-[#2c3e50] font-bold uppercase">
-                  <th className="py-1.5 pr-4">{t.weightsTableColCat}</th>
-                  <th className="py-1.5 px-4 text-right font-mono">{t.weightsTableColRaw}</th>
-                  <th className="py-1.5 pl-4 text-right font-mono">{t.weightsTableColNorm}</th>
+// Dataset definitions and basket weights for the selected index
+function DefinitionsPanel({ basket, t, className }: { basket: DataStore['basket']; t: typeof T['en']; className?: string }) {
+  const total = basket.categories.reduce((sum, c) => sum + c.raw, 0);
+  return (
+    <div className={`bg-neutral-50 border-l-4 border-[#2c3e50] p-4 text-xs text-neutral-600 leading-relaxed rounded-r shadow-sm ${className ?? ''}`}>
+      <p className="font-bold text-[#2c3e50] uppercase mb-1">{t.definitions.title}</p>
+      <ul className="list-disc pl-4 space-y-1 mt-1">
+        {t.definitions.items.map(([term, text]) => (
+          <li key={term || text}>{term && <strong>{term}</strong>} {text}</li>
+        ))}
+      </ul>
+
+      {/* Flat Datawrapper Style Weights table */}
+      <div className="mt-4 border-t border-neutral-200 pt-4">
+        <p className="font-bold text-[#2c3e50] uppercase mb-2">{t.weightsTableTitle}</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[10px] text-left text-neutral-600 border-collapse">
+            <thead>
+              <tr className="border-b border-neutral-300 text-[#2c3e50] font-bold uppercase">
+                <th className="py-1.5 pr-4">{t.weightsTableColCat}</th>
+                <th className="py-1.5 px-4 text-right font-mono">{t.weightsTableColRaw}</th>
+                <th className="py-1.5 pl-4 text-right font-mono">{t.weightsTableColNorm}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {basket.categories.map(c => (
+                <tr key={c.synth} className="border-b border-neutral-200 hover:bg-neutral-100/50">
+                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">{c.synth}</td>
+                  <td className="py-1.5 px-4 text-right font-mono">{c.raw.toFixed(2)}</td>
+                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">{(100 * c.raw / total).toFixed(2)}%</td>
                 </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Alimentos y Bebidas No Alcohólicas</td>
-                  <td className="py-1.5 px-4 text-right font-mono">27.06</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">55.08%</td>
-                </tr>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Prendas de Vestir y Calzado</td>
-                  <td className="py-1.5 px-4 text-right font-mono">7.56</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">15.39%</td>
-                </tr>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Bienes y Servicios Diversos</td>
-                  <td className="py-1.5 px-4 text-right font-mono">7.55</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">15.37%</td>
-                </tr>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Muebles, Bienes y Servicios Domésticos</td>
-                  <td className="py-1.5 px-4 text-right font-mono">6.08</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">12.38%</td>
-                </tr>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Bebidas Alcohólicas y Tabaco</td>
-                  <td className="py-1.5 px-4 text-right font-mono">0.88</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">1.79%</td>
-                </tr>
-                <tr className="border-t border-neutral-300 font-bold bg-neutral-100/30">
-                  <td className="py-1.5 pr-4 text-[#2c3e50] uppercase">Total (Core-5 Basket)</td>
-                  <td className="py-1.5 px-4 text-right font-mono text-[#2c3e50]">49.13</td>
-                  <td className="py-1.5 pl-4 text-right font-mono text-[#2c3e50]">100.00%</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+              ))}
+              <tr className="border-t border-neutral-300 font-bold bg-neutral-100/30">
+                <td className="py-1.5 pr-4 text-[#2c3e50] uppercase">{t.weightsTableTotal}</td>
+                <td className="py-1.5 px-4 text-right font-mono text-[#2c3e50]">{total.toFixed(2)}</td>
+                <td className="py-1.5 pl-4 text-right font-mono text-[#2c3e50]">100.00%</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -884,9 +993,10 @@ function NationalView({ data, alignmentMode, lang, t }: { data: DataStore; align
 function getCityCombinedData(
   cityName: string,
   syntheticRows: any[],
-  officialCityCore5Rows: any[],
+  officialCityCoreRows: any[],
   officialCityCategoryRows: any[],
-  alignmentMode: 'rebased' | 'original'
+  alignmentMode: 'rebased' | 'original',
+  basketCategories: BasketCategory[]
 ) {
   if (!syntheticRows || syntheticRows.length === 0) return [];
 
@@ -903,22 +1013,16 @@ function getCityCombinedData(
     return cNorm.includes(cityQuery);
   };
 
-  const cityCore5Rows = (officialCityCore5Rows || []).filter(r => matchCity(r.city));
+  const cityCoreRows = (officialCityCoreRows || []).filter(r => matchCity(r.city));
   const cityCatRows = (officialCityCategoryRows || []).filter(r => matchCity(r.city));
 
   // 1. Get base values on the rebasing anchor date
   const baseSynth = getValueOnDate(syntheticRows, BASE_DATE, 'date', 'cpi') || 100.0;
-  const baseOffCore = getValueOnDate(cityCore5Rows, BASE_DATE, 'date', 'Core-5 CPI') || 100.0;
+  const baseOffCore = getValueOnDate(cityCoreRows, BASE_DATE, 'date', CORE_FIELD) || 100.0;
   const baseOffOverall = getValueOnDate(cityCatRows.filter(r => norm(r.category) === 'indice general'), BASE_DATE, 'date', 'CPI level') || 100.0;
 
   // Track category baseline maps
-  const categories = [
-    { synth: 'Alimentos y Bebidas No Alcohólicas', off: 'Alimentos y bebidas no alcohólicas' },
-    { synth: 'Bebidas Alcohólicas y Tabaco', off: 'Bebidas alcohólicas y tabaco' },
-    { synth: 'Bienes y Servicios Diversos', off: 'Bienes y servicios diversos' },
-    { synth: 'Muebles, Bienes y Servicios Domésticos', off: 'Muebles, bienes y servicios domésticos' },
-    { synth: 'Prendas de Vestir y Calzado', off: 'Prendas de vestir y calzado' }
-  ];
+  const categories = basketCategories;
 
   const catBases: Record<string, { synth: number; off: number }> = {};
   categories.forEach(cat => {
@@ -929,10 +1033,10 @@ function getCityCombinedData(
 
   // Prepare official core-5 map by date
   const offCoreMap = new Map<string, number>();
-  cityCore5Rows.forEach(r => {
-    if (r.date && r['Core-5 CPI'] != null) {
+  cityCoreRows.forEach(r => {
+    if (r.date && r[CORE_FIELD] != null) {
       const dInfo = parseDateSafe(String(r.date));
-      offCoreMap.set(dInfo.displayDate, Number(r['Core-5 CPI']));
+      offCoreMap.set(dInfo.displayDate, Number(r[CORE_FIELD]));
     }
   });
 
@@ -1038,24 +1142,27 @@ function CityView({ name, data, alignmentMode, lang, t }: { name: string; data: 
     return data.santaCruzSynthetic;
   }, [name, data]);
 
+  // Fixed display order, so each category keeps its colour when the index changes
   const categoriesList = useMemo(() => {
+    const inBasket = new Set(data.basket.categories.map(c => c.synth));
     return [
       'Alimentos y Bebidas No Alcohólicas',
       'Bebidas Alcohólicas y Tabaco',
       'Bienes y Servicios Diversos',
       'Muebles, Bienes y Servicios Domésticos',
       'Prendas de Vestir y Calzado'
-    ];
-  }, []);
+    ].filter(c => inBasket.has(c));
+  }, [data.basket]);
 
   // Combined City Data
   const chartData = useMemo(() => {
     return getCityCombinedData(
       name,
       syntheticRows,
-      data.officialCityCore5,
+      data.officialCityCore,
       data.officialCityCategory,
-      alignmentMode
+      alignmentMode,
+      data.basket.categories
     );
   }, [name, syntheticRows, data, alignmentMode]);
 
@@ -1126,8 +1233,8 @@ function CityView({ name, data, alignmentMode, lang, t }: { name: string; data: 
         DataSource: r.data_source,
         Synthetic_General_CPI: r.Synthetic_CPI != null ? r.Synthetic_CPI.toFixed(4) : null,
         Synthetic_General_Inflation: r.Synthetic_CPI_Inflation != null ? r.Synthetic_CPI_Inflation.toFixed(4) : null,
-        Official_Core5_CPI: r.Official_CPI != null ? r.Official_CPI.toFixed(4) : null,
-        Official_Core5_Inflation: r.Official_CPI_Inflation != null ? r.Official_CPI_Inflation.toFixed(4) : null,
+        [`Official_${data.basket.exportKey}_CPI`]: r.Official_CPI != null ? r.Official_CPI.toFixed(4) : null,
+        [`Official_${data.basket.exportKey}_Inflation`]: r.Official_CPI_Inflation != null ? r.Official_CPI_Inflation.toFixed(4) : null,
         Official_Overall_CPI: r.Official_CPI_Overall != null ? r.Official_CPI_Overall.toFixed(4) : null,
         Official_Overall_Inflation: r.Official_CPI_Overall_Inflation != null ? r.Official_CPI_Overall_Inflation.toFixed(4) : null,
       };
@@ -1143,7 +1250,7 @@ function CityView({ name, data, alignmentMode, lang, t }: { name: string; data: 
     });
 
     const csv = Papa.unparse(exportRows);
-    exportCSV(csv, `${norm(name)}_cpi_comparison.csv`);
+    exportCSV(csv, `${data.basket.filePrefix}${norm(name)}_cpi_comparison.csv`);
   };
 
   return (
@@ -1256,7 +1363,7 @@ function CityView({ name, data, alignmentMode, lang, t }: { name: string; data: 
             </div>
             <div className="flex gap-2">
               <button 
-                onClick={() => exportImage(cpiGraphRef.current, `bolivia_${norm(name)}_cpi_index.png`)} 
+                onClick={() => exportImage(cpiGraphRef.current, `${data.basket.filePrefix}bolivia_${norm(name)}_cpi_index.png`)} 
                 className="flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-1 border border-neutral-200 hover:bg-neutral-50 rounded bg-white text-neutral-700 shadow-sm"
               >
                 <Camera className="w-3 h-3" />
@@ -1480,71 +1587,14 @@ function CityView({ name, data, alignmentMode, lang, t }: { name: string; data: 
         </div>
       </div>
 
-      {/* Methodology Callout Panel */}
-      <div className="bg-neutral-50 border-l-4 border-[#2c3e50] p-4 text-xs text-neutral-600 leading-relaxed rounded-r shadow-sm mt-6">
-        <p className="font-bold text-[#2c3e50] uppercase mb-1">Methodology & Dataset Definitions</p>
-        <ul className="list-disc pl-4 space-y-1 mt-1">
-          <li><strong>Supermarket Estimate</strong> represents a high-frequency tracker computed daily from active retail listings.</li>
-          <li><strong>Official Core-5 (INE)</strong> represents the official equivalent basket derived exclusively from the 5 corresponding product categories in the official INE registry (representing roughly 49% of the national CPI basket).</li>
-          <li><strong>Official Overall CPI</strong> captures economy-wide inflation including utilities, housing, transportation, healthcare, and services (100% basket weight).</li>
-          <li>Both rebased views anchor cumulative growth from <strong>August 15, 2024</strong>. Official monthly values are plotted on the 15th of each month, since INE's index averages prices collected across the month.</li>
-        </ul>
-
-        {/* Flat Datawrapper Style Weights table */}
-        <div className="mt-4 border-t border-neutral-200 pt-4">
-          <p className="font-bold text-[#2c3e50] uppercase mb-2">{t.weightsTableTitle}</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[10px] text-left text-neutral-600 border-collapse">
-              <thead>
-                <tr className="border-b border-neutral-300 text-[#2c3e50] font-bold uppercase">
-                  <th className="py-1.5 pr-4">{t.weightsTableColCat}</th>
-                  <th className="py-1.5 px-4 text-right font-mono">{t.weightsTableColRaw}</th>
-                  <th className="py-1.5 pl-4 text-right font-mono">{t.weightsTableColNorm}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Alimentos y Bebidas No Alcohólicas</td>
-                  <td className="py-1.5 px-4 text-right font-mono">27.06</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">55.08%</td>
-                </tr>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Prendas de Vestir y Calzado</td>
-                  <td className="py-1.5 px-4 text-right font-mono">7.56</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">15.39%</td>
-                </tr>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Bienes y Servicios Diversos</td>
-                  <td className="py-1.5 px-4 text-right font-mono">7.55</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">15.37%</td>
-                </tr>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Muebles, Bienes y Servicios Domésticos</td>
-                  <td className="py-1.5 px-4 text-right font-mono">6.08</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">12.38%</td>
-                </tr>
-                <tr className="border-b border-neutral-200 hover:bg-neutral-100/50">
-                  <td className="py-1.5 pr-4 font-semibold text-neutral-800">Bebidas Alcohólicas y Tabaco</td>
-                  <td className="py-1.5 px-4 text-right font-mono">0.88</td>
-                  <td className="py-1.5 pl-4 text-right font-mono font-bold text-[#1f77b4]">1.79%</td>
-                </tr>
-                <tr className="border-t border-neutral-300 font-bold bg-neutral-100/30">
-                  <td className="py-1.5 pr-4 text-[#2c3e50] uppercase">Total (Core-5 Basket)</td>
-                  <td className="py-1.5 px-4 text-right font-mono text-[#2c3e50]">49.13</td>
-                  <td className="py-1.5 pl-4 text-right font-mono text-[#2c3e50]">100.00%</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      <DefinitionsPanel basket={data.basket} t={t} className="mt-6" />
     </div>
   );
 }
 
 // --- PRODUCT COUNT VIEW ---
 
-function ProductCountView({ data, lang, t }: { data: any[]; lang: Lang; t: typeof T['en'] }) {
+function ProductCountView({ data, filePrefix, lang, t }: { data: any[]; filePrefix: string; lang: Lang; t: typeof T['en'] }) {
   const chartData = useMemo(() => {
     if (!data) return [];
     return data.map(r => {
@@ -1569,7 +1619,7 @@ function ProductCountView({ data, lang, t }: { data: any[]; lang: Lang; t: typeo
       const { dateNum, ...rest } = r;
       return rest;
     }));
-    exportCSV(csv, 'live_product_counts.csv');
+    exportCSV(csv, `${filePrefix}live_product_counts.csv`);
   };
 
   return (
@@ -1586,7 +1636,7 @@ function ProductCountView({ data, lang, t }: { data: any[]; lang: Lang; t: typeo
             <p className="text-[11px] text-neutral-400 mt-0.5">Stacked count of observed supermarket price listings over time.</p>
           </div>
           <button 
-            onClick={() => exportImage(graphRef.current, 'product_observations_density.png')} 
+            onClick={() => exportImage(graphRef.current, `${filePrefix}product_observations_density.png`)} 
             className="flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-1 border border-neutral-200 hover:bg-neutral-50 rounded bg-white text-neutral-700 shadow-sm"
           >
             <Camera className="w-3 h-3" />
